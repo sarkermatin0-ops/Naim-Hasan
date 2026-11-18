@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#120d24">
+<title>স্টিকম্যান ডেভিল – ১০০ লেভেল</title>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#120d24;font-family:"Hind Siliguri","Noto Sans Bengali",system-ui,sans-serif;color:#fff;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.pad{position:fixed;bottom:calc(14px + env(safe-area-inset-bottom));display:flex;gap:14px}
+#pl{left:calc(18px + env(safe-area-inset-left))}#pr{right:calc(18px + env(safe-area-inset-right))}
+.b{width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:34px;backdrop-filter:blur(4px);touch-action:none}
+.b.on{background:rgba(255,77,109,.6);border-color:#ff4d6d}
+#menu,#rot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:20px;background:radial-gradient(circle at 50% 30%,#3a1f6b,#120d24 70%)}
+#rot{display:none;z-index:9;background:#120d24}
+@media (orientation:portrait){#rot{display:flex}}
+h1{margin:0;font-size:clamp(30px,8vw,56px);line-height:1.1}
+p{margin:0;opacity:.8;font-size:18px}
+.btn{padding:14px 34px;font-size:20px;font-weight:700;font-family:inherit;color:#fff;background:#ff4d6d;border:0;border-radius:40px;box-shadow:0 6px 0 #a3243d}
+.btn:active{transform:translateY(4px);box-shadow:0 2px 0 #a3243d}
+.btn.s{background:transparent;box-shadow:none;border:2px solid rgba(255,255,255,.4);font-size:15px;padding:8px 22px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="pad" id="pl"><button class="b" id="bl">◀</button><button class="b" id="br">▶</button></div>
+<div class="pad" id="pr"><button class="b" id="bj">▲</button></div>
+<div id="menu">
+  <h1>স্টিকম্যান<br>ডেভিল</h1>
+  <p>১০০টা লেভেল। প্রতিটা কঠিন। সবকিছুই ফাঁদ। 😈</p>
+  <button class="btn" id="play">▶ খেলো</button>
+  <button class="btn s" id="reset">নতুন করে শুরু</button>
+</div>
+<div id="rot"><h1>📱↻</h1><p>ফোনটা আড়াআড়ি (landscape) ধরো</p></div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+const W=800,H=450,GY=380,TW=20;
+let sc=1,ox=0,oy=0,lvl=1,deaths=0,P,tiles,blocks,spikes,zones,door,rev=0,msg='',msgT=0,won=false,frame=0,st='menu',tm=0,parts=[],flash=0,stars=[];
+try{lvl=Math.min(100,+localStorage.getItem('sd_lvl')||1);deaths=+localStorage.getItem('sd_d')||0}catch(e){}
+for(let i=0;i<40;i++)stars.push([Math.random()*W,Math.random()*250,Math.random()*1.5+.5,Math.random()*6]);
+const keys={l:0,r:0,j:0};let coy=0,jh=0;
+function rs(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;sc=Math.min(cv.width/W,cv.height/H);ox=(cv.width-W*sc)/2;oy=(cv.height-H*sc)/2}
+addEventListener('resize',rs);rs();
+let ac;function snd(f,d,type,v,sl){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),a=ac.createGain();o.type=type||'square';o.frequency.setValueAtTime(f,ac.currentTime);if(sl)o.frequency.exponentialRampToValueAtTime(sl,ac.currentTime+d);a.gain.setValueAtTime(v||.06,ac.currentTime);a.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.connect(a);a.connect(ac.destination);o.start();o.stop(ac.currentTime+d)}catch(e){}}
+function rng(s){return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+const hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+function build(n){
+  const r=rng(n*7919+13);
+  tiles=[];blocks=[];spikes=[];zones=[];rev=0;parts=[];st='play';jh=0;
+  for(let i=0;i<W/TW;i++)tiles.push({x:i*TW,y:GY,w:TW,h:70,on:true,fall:false,t:0,vy:0});
+  P={x:30,y:GY-34,w:16,h:34,vx:0,vy:0,g:false,ph:0,f:1};
+  const items=Math.min(8,2+Math.ceil(n/14));
+  const x0=120,x1=680,slot=(x1-x0)/items;
+  const kinds=n<3?['gap','spike']:n<8?['gap','spike','pop','block']:n<20?['gap','spike','pop','block','fall','drop']:['gap','spike','pop','block','fall','drop','shoot','rev'];
+  const sp=(x,o)=>spikes.push(Object.assign({x,y:GY-22,w:24,h:22,dir:'u',vis:true,act:false},o||{}));
+  for(let i=0;i<items;i++){
+    const sx=x0+i*slot,cx=sx+slot/2,k=kinds[Math.floor(r()*kinds.length)];
+    if(k==='gap'){const gw=Math.min(slot-16,48+n*.8);tiles.forEach(t=>{if(t.x+TW>cx-gw/2&&t.x<cx+gw/2)t.on=false})}
+    else if(k==='spike')sp(cx-12);
+    else if(k==='pop')sp(cx-12,{vis:false,trig:{x:cx-72+r()*30}});
+    else if(k==='block'){blocks.push({x:cx-20,y:GY-34,w:40,h:34});if(n>12)sp(cx+26,{vis:n%2===0,trig:{x:cx-40}})}
+    else if(k==='fall')tiles.forEach(t=>{if(t.x>=cx-30&&t.x<cx+30)t.fall=true});
+    else if(k==='drop')sp(cx-12,{y:0,dir:'d',trig:{x:cx-45}});
+    else if(k==='shoot')sp(sx+slot-8,{y:GY-20,w:26,h:18,dir:'l',x0:sx+slot-8,trig:{x:sx+slot-130}});
+    else if(k==='rev')zones.push({x:cx-10,w:20,y:0,h:H});
+  }
+  door={x:735,y:GY-48,w:30,h:48};
+  if(n%3===0)sp(700,{vis:false,trig:{x:650}});
+  if(n>=40&&n%4===0)sp(762,{vis:false,trig:{x:715}});
+  if(n%10===0){msg='⚠ বস লেভেল!';msgT=120}else if(n===1){msg='দরজায় পৌঁছাও... যদি পারো 😈';msgT=220}
+}
+function die(){
+  if(st!=='play')return;
+  st='dead';tm=42;deaths++;try{localStorage.setItem('sd_d',deaths)}catch(e){}
+  navigator.vibrate&&navigator.vibrate(70);snd(300,.35,'sawtooth',.08,40);
+  const cx=P.x+8,cy=P.y+17;
+  for(let i=0;i<14;i++){const a=Math.random()*6.28;parts.push({x:cx,y:cy,vx:Math.cos(a)*(2+Math.random()*4),vy:Math.sin(a)*(2+Math.random()*4)-3,r:2+Math.random()*6,l:12+Math.random()*12})}
+}
+function solids(){return blocks.concat(tiles.filter(t=>t.on&&!(t.fall&&t.t>12)))}
+function update(){
+  frame++;if(msgT>0)msgT--;if(flash>0)flash--;
+  for(const p of parts){p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.l--}
+  if(st==='dead'){if(--tm<=0)build(lvl);return}
+  if(st==='next'){if(--tm<=0){lvl++;if(lvl>100){won=true;st='win';return}try{localStorage.setItem('sd_lvl',lvl)}catch(e){}build(lvl)}return}
+  if(st!=='play')return;
+  const dir=(keys.r-keys.l)*(rev>0?-1:1);if(rev>0)rev--;
+  P.vx=dir*3.4;if(dir)P.f=dir>0?1:-1;
+  coy=P.g?6:coy-1;
+  if(keys.j){if(jh===0)jh=8;}else jh=0;
+  if(jh>0){jh--;if(coy>0){P.vy=-10.4;P.g=false;coy=0;jh=-1;snd(380,.14,'square',.04,760)}}
+  if(!keys.j)jh=0;
+  P.vy=Math.min(P.vy+.5+(!keys.j&&P.vy<-3?.7:0),12);
+  const S=solids();
+  P.x+=P.vx;for(const s of S)if(hit(P,s)){P.vx>0?P.x=s.x-P.w:P.x=s.x+s.w}
+  P.x=Math.max(0,Math.min(W-P.w,P.x));
+  P.y+=P.vy;P.g=false;
+  for(const s of S)if(hit(P,s)){if(P.vy>0){P.y=s.y-P.h;P.g=true}else P.y=s.y+s.h;P.vy=0}
+  if(P.y>H+20)return die();
+  P.ph+=Math.abs(P.vx)*.1;
+  for(const t of tiles)if(t.fall&&t.on){if(t.t>0||(Math.abs(P.x+8-t.x-TW/2)<42&&P.y>GY-60))t.t++;if(t.t>12){t.vy+=.7;t.y+=t.vy}}
+  const pb={x:P.x+3,y:P.y+3,w:P.w-6,h:P.h-3};
+  for(const s of spikes){
+    if(s.trig&&!s.act&&P.x>s.trig.x&&P.x<s.x+60){s.act=true;s.vis=true;if(s.dir!=='d')snd(500,.1,'square',.04,900)}
+    if(s.act&&s.dir==='d')s.y=Math.min(s.y+9,GY-22);
+    if(s.act&&s.dir==='l'&&s.x>s.x0-200)s.x-=7;
+    if(s.vis&&hit(pb,{x:s.x+4,y:s.y+3,w:s.w-8,h:s.h-3}))return die();
+  }
+  for(const z of zones)if(!z.done&&hit(P,z)){z.done=true;rev=100;msg='😵 কন্ট্রোল উল্টে গেল!';msgT=80;snd(200,.3,'triangle',.08,100)}
+  if(hit(pb,door)){st='next';tm=28;flash=28;snd(520,.25,'triangle',.08,1040)}
+}
+function limb(x,y,len,a){g.moveTo(x,y);g.lineTo(x+Math.sin(a)*len,y+Math.cos(a)*len)}
+function stick(x,y,ph,air,f){
+  g.save();g.strokeStyle='#fff';g.lineWidth=3.6;g.lineCap='round';
+  const cx=x+8,hy=y+22,sy=y+13;
+  g.beginPath();g.arc(cx,y+5.5,5.5,0,6.3);g.stroke();
+  g.beginPath();g.moveTo(cx,y+11);g.lineTo(cx,hy);
+  let l1,l2,a1,a2;
+  if(air){l1=.7*f;l2=-.4*f;a1=-2.5*f;a2=2.2*f}else{const s=Math.sin(ph)*.95;l1=s;l2=-s;a1=-s*1.1;a2=s*1.1}
+  limb(cx,hy,12.5,l1);limb(cx,hy,12.5,l2);limb(cx,sy,10,a1);limb(cx,sy,10,a2);
+  g.stroke();
+  const w=Math.sin(frame*.3)*2;
+  g.fillStyle='#ff4d6d';g.beginPath();g.moveTo(cx-f*5,y+4);g.lineTo(cx-f*(13+w),y+2+w);g.lineTo(cx-f*5,y+7);g.fill();
+  g.restore();
+}
+function tri(s){
+  const{x,y,w,h}=s;g.beginPath();
+  if(s.dir==='u'){g.moveTo(x,y+h);g.lineTo(x+w/2,y);g.lineTo(x+w,y+h)}
+  else if(s.dir==='d'){g.moveTo(x,y);g.lineTo(x+w/2,y+h);g.lineTo(x+w,y)}
+  else{g.moveTo(x+w,y);g.lineTo(x,y+h/2);g.lineTo(x+w,y+h)}
+  g.closePath();g.fill();g.stroke();
+}
+function draw(){
+  g.setTransform(1,0,0,1,0,0);
+  const bg=g.createLinearGradient(0,0,0,cv.height);bg.addColorStop(0,'#120d24');bg.addColorStop(1,'#3b1d5e');
+  g.fillStyle=bg;g.fillRect(0,0,cv.width,cv.height);
+  g.setTransform(sc,0,0,sc,ox,oy);g.beginPath();g.rect(0,0,W,H);g.clip();
+  const t=frame/30;
+  g.fillStyle='#fff';for(const s of stars){g.globalAlpha=.4+.4*Math.sin(t+s[3]);g.fillRect(s[0],s[1],s[2],s[2])}
+  g.globalAlpha=1;g.fillStyle='#ffe9a8';g.beginPath();g.arc(650,80,28,0,6.3);g.fill();
+  g.fillStyle='#2a1550';g.beginPath();g.arc(662,74,26,0,6.3);g.fill();
+  g.fillStyle='#24123f';g.beginPath();g.moveTo(0,GY);for(let x=0;x<=W;x+=40)g.lineTo(x,GY-60-30*Math.sin(x*.013+lvl));g.lineTo(W,GY);g.fill();
+  for(const k of tiles)if(k.on&&k.y<H){g.fillStyle='#2b1a47';g.fillRect(k.x,k.y,k.w,k.h);g.fillStyle='#35e0ff';g.fillRect(k.x,k.y,k.w,3);g.fillStyle='#4a2d75';g.fillRect(k.x,k.y+3,k.w,5)}
+  for(const b of blocks){g.fillStyle='#4a2d75';g.fillRect(b.x,b.y,b.w,b.h);g.fillStyle='#35e0ff';g.fillRect(b.x,b.y,b.w,3);g.strokeStyle='#6d49a8';g.lineWidth=2;g.strokeRect(b.x+2,b.y+2,b.w-4,b.h-4)}
+  g.fillStyle='#ff4d6d';g.strokeStyle='#ffd0d9';g.lineWidth=1.5;g.lineJoin='round';
+  for(const s of spikes)if(s.vis)tri(s);
+  const dg=g.createLinearGradient(0,door.y,0,door.y+door.h);dg.addColorStop(0,'#7CFFB2');dg.addColorStop(1,'#1fb86a');
+  g.fillStyle=dg;g.beginPath();g.moveTo(door.x,door.y+door.h);g.lineTo(door.x,door.y+14);g.quadraticCurveTo(door.x+15,door.y-10,door.x+30,door.y+14);g.lineTo(door.x+30,door.y+door.h);g.fill();
+  g.fillStyle='#120d24';g.beginPath();g.moveTo(door.x+6,door.y+door.h);g.lineTo(door.x+6,door.y+16);g.quadraticCurveTo(door.x+15,door.y+2,door.x+24,door.y+16);g.lineTo(door.x+24,door.y+door.h);g.fill();
+  if(st==='play'||st==='next'||st==='menu')stick(P.x,P.y,P.ph,!P.g,P.f);
+  g.fillStyle='#fff';for(const p of parts)if(p.l>0){g.globalAlpha=Math.min(1,p.l/12);g.fillRect(p.x,p.y,3,p.r)}
+  g.globalAlpha=1;
+  if(flash>0){g.fillStyle='rgba(124,255,178,'+flash/40+')';g.fillRect(0,0,W,H)}
+  g.fillStyle='#fff';g.font='700 22px "Hind Siliguri",sans-serif';g.textAlign='left';g.fillText('লেভেল '+lvl+'/100',16,32);
+  g.textAlign='right';g.fillStyle='#ff8fa3';g.fillText('💀 '+deaths,W-16,32);
+  if(msgT>0){g.textAlign='center';g.fillStyle='#fff';g.font='700 26px "Hind Siliguri",sans-serif';g.fillText(msg,W/2,90)}
+  if(won){g.fillStyle='rgba(18,13,36,.92)';g.fillRect(0,0,W,H);g.textAlign='center';g.fillStyle='#7CFFB2';g.font='700 44px "Hind Siliguri",sans-serif';g.fillText('🎉 ১০০ লেভেল শেষ!',W/2,200);g.fillStyle='#fff';g.font='26px "Hind Siliguri",sans-serif';g.fillText('মোট মৃত্যু: '+deaths,W/2,250);g.fillText('তুমি সত্যিকারের চ্যাম্পিয়ন!',W/2,290)}
+}
+function loop(){if(st!=='menu')update();draw();requestAnimationFrame(loop)}
+function bind(id,k){const el=document.getElementById(id);
+  const on=e=>{e.preventDefault();keys[k]=1;el.classList.add('on');ac&&ac.state==='suspended'&&ac.resume()};
+  const off=e=>{e.preventDefault();keys[k]=0;el.classList.remove('on')};
+  el.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(v=>el.addEventListener(v,off));
+}
+bind('bl','l');bind('br','r');bind('bj','j');
+const kd={ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r',' ':'j',ArrowUp:'j',w:'j',W:'j'};
+addEventListener('keydown',e=>{if(kd[e.key]){keys[kd[e.key]]=1;e.preventDefault()}if(e.key==='r'||e.key==='R')die()});
+addEventListener('keyup',e=>{if(kd[e.key])keys[kd[e.key]]=0});
+addEventListener('contextmenu',e=>e.preventDefault());
+const menu=document.getElementById('menu'),pb=document.getElementById('play');
+function label(){pb.textContent='▶ খেলো (লেভেল '+lvl+')'}label();
+pb.onclick=()=>{menu.style.display='none';snd(440,.1);
+  try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();screen.orientation.lock('landscape').catch(()=>{})}catch(e){}
+  build(lvl)};
+document.getElementById('reset').onclick=()=>{lvl=1;deaths=0;try{localStorage.setItem('sd_lvl',1);localStorage.setItem('sd_d',0)}catch(e){}label()};
+build(lvl);st='menu';loop();
+</script>
+</body>
+</html>
